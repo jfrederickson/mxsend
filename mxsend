@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+
+import sys, os, argparse, configparser
+from xdg import BaseDirectory
+from matrix_client.client import MatrixClient, Room
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('room', help='room to send messages to')
+    parser.add_argument('-c', '--config', help='config file to use')
+    args = parser.parse_args()
+
+    config = configparser.ConfigParser()
+    if(args.config is not None):
+        config.read(args.config)
+    else:
+        for d in BaseDirectory.xdg_config_dirs:
+            conf = d + '/mxsend.conf'
+            if(os.path.isfile(conf)):
+               config.read(conf)
+
+    try:
+        token = config.get('auth', 'token')
+    except configparser.NoOptionError as e:
+        sys.stderr.write("Access token required - please check your config\n")
+        sys.exit(1)
+
+    room_id_or_alias = config.get('rooms', args.room)
+
+    message = sys.stdin.read()
+
+    send_message(token, config['auth']['user_id'], config['auth']['homeserver'], room_id_or_alias, message)
+
+def send_message(token, user_id, hs, room_id_or_alias, message):
+    client = MatrixClient(hs, token=token, user_id=user_id)
+    if(room_id_or_alias[0] == '#'):
+        room = Room(client, client.api.get_room_id(room_id_or_alias))
+    elif(room_id_or_alias[0] == '!'):
+        room = Room(client, room_id_or_alias)
+    else:
+        sys.stderr.write("Room ID or alias invalid")
+        sys.exit(1)
+        
+    if(room.room_id in list(client.get_rooms())):
+        room.send_text(message)
+    else:
+        client.join_room(room_id_or_alias)
+        room.send_text(message)
+
+if(__name__ == "__main__"):
+    main()
